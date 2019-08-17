@@ -37,6 +37,7 @@
 #include "system.h"
 #include "deck.h"
 #include "log.h"
+#include "param.h"
 
 #include "config.h"
 #include "FreeRTOS.h"
@@ -65,8 +66,16 @@ baseStationGeometry_t lighthouseBaseStationsGeometry[2]  = {
 {.origin = {2.563488, 3.112367, -1.062398, }, .mat = {{0.034269, -0.647552, 0.761251, }, {-0.012392, 0.761364, 0.648206, }, {-0.999336, -0.031647, 0.018067, }, }},
 };
 
+// Uncomment if you want to force the Crazyflie to reflash the deck at each startup
+// #define FORCE_FLASH true
+
+static bool isInit = false;
 
 #if DISABLE_LIGHTHOUSE_DRIVER == 0
+
+#ifndef FORCE_FLASH
+#define FORCE_FLASH false
+#endif
 
 #define STR2(x) #x
 #define STR(x) STR2(x)
@@ -95,11 +104,11 @@ INCBIN(bitstream, "lighthouse.bin");
 
 static void checkVersionAndBoot();
 
-static bool isInit = false;
-
 static pulseProcessorResult_t angles[PULSE_PROCESSOR_N_SENSORS];
 
 // Stats
+static bool comSynchronized = false;
+
 static int serialFrameCount = 0;
 static int frameCount = 0;
 static int cycleCount = 0;
@@ -231,6 +240,7 @@ static void lighthouseTask(void *param)
       synchronized = syncCounter == 7;
     }
 
+    comSynchronized = true;
     DEBUG_PRINT("Synchronized!\n");
 
     // Receive data until being desynchronized
@@ -286,7 +296,7 @@ static void checkVersionAndBoot()
   lhblFlashWakeup();
   vTaskDelay(M2T(1));
 
-  // Checking if first and last 64 bytes of bitstream are identical
+  // Checking the bitstreams are identical
   // Also decoding bitstream version for console
   static char deckBitstream[65];
   lhblFlashRead(LH_FW_ADDR, 64, (uint8_t*)deckBitstream);
@@ -295,18 +305,17 @@ static void checkVersionAndBoot()
   int embeddedVersion = strtol((char*)&bitstream[2], NULL, 10);
 
   bool identical = true;
-  if (memcmp(deckBitstream, bitstream, 64)) {
-    DEBUG_PRINT("Fail comparing begining\n");
-    identical = false;
+  for (int i=0; i<=bitstreamSize; i+=64) {
+    int length = ((i+64)<bitstreamSize)?64:bitstreamSize-i;
+    lhblFlashRead(LH_FW_ADDR + i, length, (uint8_t*)deckBitstream);
+    if (memcmp(deckBitstream, &bitstream[i], length)) {
+      DEBUG_PRINT("Fail comparing firmware\n");
+      identical = false;
+      break;
+    }
   }
 
-  lhblFlashRead(LH_FW_ADDR + (bitstreamSize - 64), 64, (uint8_t*)deckBitstream);
-  if (memcmp(deckBitstream, &bitstream[(bitstreamSize - 64)], 64)) {
-    DEBUG_PRINT("Fail comparing end\n");
-    identical = false;
-  }
-
-  if (identical == false) {
+  if (identical == false || FORCE_FLASH) {
     DEBUG_PRINT("Deck has version %d and we embeed version %d\n", deckVersion, embeddedVersion);
     DEBUG_PRINT("Updating deck with embedded version!\n");
 
@@ -401,7 +410,12 @@ LOG_ADD(LOG_UINT16, width2, &pulseWidth[2])
 #if PULSE_PROCESSOR_N_SENSORS > 3
 LOG_ADD(LOG_UINT16, width3, &pulseWidth[3])
 #endif
+
+LOG_ADD(LOG_UINT8, comSync, &comSynchronized)
 LOG_GROUP_STOP(lighthouse)
 
-
 #endif // DISABLE_LIGHTHOUSE_DRIVER
+
+PARAM_GROUP_START(deck)
+PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, bdLighthouse4, &isInit)
+PARAM_GROUP_STOP(deck)
