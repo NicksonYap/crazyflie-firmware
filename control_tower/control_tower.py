@@ -72,6 +72,7 @@ class TrafficController:
         self._log_conf = None
         self.copter_state = self.STATE_UNKNOWN
         self.vbat = -1.0
+        self.chargeCurrent = 0
         self._time_for_next_connection_attempt = 0
         self.traj_cycles = None
         self.est_x = 0.0
@@ -147,8 +148,12 @@ class TrafficController:
     def get_charge_level(self):
         return self.vbat
 
+    def get_charge_current(self):
+        return self.chargeCurrent
+
     def is_charged_for_flight(self):
-        return self.vbat > 4.0
+        # return self.vbat > 4.0
+        return self.vbat > 3.9
 
     def get_traj_cycles(self):
         return self.traj_cycles
@@ -166,7 +171,8 @@ class TrafficController:
         self.connection_state = self.CS_CONNECTED
         print('Connected to %s' % link_uri)
 
-        self.set_trajectory_count(2)
+        # self.set_trajectory_count(2)
+        self.set_trajectory_count(1)
         self._setup_logging()
 
     def _connection_failed(self, link_uri, msg):
@@ -209,6 +215,7 @@ class TrafficController:
         self._log_conf.add_variable('app.uptime', 'uint32_t')
         self._log_conf.add_variable('app.flighttime', 'uint32_t')
         self._log_conf.add_variable('pm.vbat', 'float')
+        self._log_conf.add_variable('pm.chargeCurrent', 'float')
         self._log_conf.add_variable('stateEstimate.x', 'float')
 
         self._cf.log.add_config(self._log_conf)
@@ -225,6 +232,7 @@ class TrafficController:
             self._pre_state_going_to_initial_position_end_time = 0
 
         self.vbat = data['pm.vbat']
+        self.chargeCurrent = data['pm.chargeCurrent']
 
         self.up_time_ms = data['app.uptime']
         self.flight_time_ms = data['app.flighttime']
@@ -240,6 +248,7 @@ class TrafficController:
         print("  Connection state:", self.connection_state)
         print("  Copter state:", self.copter_state)
         print("  Bat:", self.vbat)
+        print("  chargeCurrent:", self.chargeCurrent)
         print("  Up time:", self.up_time_ms / 1000)
         print("  Flight time:", self.flight_time_ms / 1000)
         print("  _pre_state_taking_off:", self._pre_state_taking_off())
@@ -282,7 +291,8 @@ class TowerBase:
                     charging_controllers.append((controller, charge))
                 else:
                     too_low_battery.append(
-                        "{} ({:.2f}V)".format(controller.uri, charge))
+                        # "{} ({:.2f}V)".format(controller.uri, charge))
+                        "{} ({:.3f}V)".format(controller.uri, charge))
 
         if len(too_low_battery) > 0:
             print("Ready but must charge:", too_low_battery)
@@ -334,6 +344,7 @@ class TowerBase:
                     'id': i,
                     'state': state,
                     'battery': controller.get_charge_level(),
+                    'charge_current': controller.get_charge_current(),
                     'uptime': controller.up_time_ms,
                     'flighttime': controller.flight_time_ms,
                 }
