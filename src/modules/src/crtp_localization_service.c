@@ -93,6 +93,21 @@ static float extQuatStdDev = 4.5e-3;
 static bool isInit = false;
 static uint8_t my_id;
 
+static struct {
+  // position - mm
+  int16_t x;
+  int16_t y;
+  int16_t z;
+
+  // compressed quaternion, see quatcompress.h
+  int32_t quat;
+
+  // lower 16 bit of timestamp (in ms)
+  uint16_t time;
+} stateCompressed;
+
+static uint32_t time;
+
 static void locSrvCrtpCB(CRTPPacket* pk);
 static void extPositionHandler(CRTPPacket* pk);
 static void genericLocHandle(CRTPPacket* pk);
@@ -138,6 +153,13 @@ static void extPositionHandler(CRTPPacket* pk)
   ext_pos.z = data->z;
   ext_pos.stdDev = extPosStdDev;
   estimatorEnqueuePosition(&ext_pos);
+
+  stateCompressed.x = ext_pos.x * 1000.0f;
+  stateCompressed.y = ext_pos.y * 1000.0f;
+  stateCompressed.z = ext_pos.z * 1000.0f;
+  stateCompressed.quat = 0;
+  time = xTaskGetTickCount();
+  stateCompressed.time = time;
 }
 
 static void genericLocHandle(CRTPPacket* pk)
@@ -169,6 +191,18 @@ static void genericLocHandle(CRTPPacket* pk)
     ext_pose.stdDevPos = extPosStdDev;
     ext_pose.stdDevQuat = extQuatStdDev;
     estimatorEnqueuePose(&ext_pose);
+
+    stateCompressed.x = ext_pose.x * 1000.0f;
+    stateCompressed.y = ext_pose.y * 1000.0f;
+    stateCompressed.z = ext_pose.z * 1000.0f;
+    float const q[4] = {
+      ext_pose.quat.x,
+      ext_pose.quat.y,
+      ext_pose.quat.z,
+      ext_pose.quat.w};
+    stateCompressed.quat = quatcompress(q);
+    time = xTaskGetTickCount();
+    stateCompressed.time = time;
   } else if (type == EXT_POSE_PACKED) {
     uint8_t numItems = (pk->size - 1) / sizeof(extPosePackedItem);
     for (uint8_t i = 0; i < numItems; ++i) {
@@ -181,6 +215,13 @@ static void genericLocHandle(CRTPPacket* pk)
         ext_pose.stdDevPos = extPosStdDev;
         ext_pose.stdDevQuat = extQuatStdDev;
         estimatorEnqueuePose(&ext_pose);
+
+        stateCompressed.x = item->x;
+        stateCompressed.y = item->y;
+        stateCompressed.z = item->z;
+        stateCompressed.quat = item->quat;
+        time = xTaskGetTickCount();
+        stateCompressed.time = time;
         break;
       }
     }
@@ -198,6 +239,13 @@ static void extPositionPackedHandler(CRTPPacket* pk)
       ext_pos.z = item->z / 1000.0f;
       ext_pos.stdDev = extPosStdDev;
       estimatorEnqueuePosition(&ext_pos);
+
+      stateCompressed.x = item->x;
+      stateCompressed.y = item->y;
+      stateCompressed.z = item->z;
+      stateCompressed.quat = 0;
+      time = xTaskGetTickCount();
+      stateCompressed.time = time;
 
       break;
     }
@@ -245,6 +293,20 @@ LOG_GROUP_START(ext_pos)
   LOG_ADD(LOG_FLOAT, Y, &ext_pos.y)
   LOG_ADD(LOG_FLOAT, Z, &ext_pos.z)
 LOG_GROUP_STOP(ext_pos)
+
+LOG_GROUP_START(locSrv)
+  LOG_ADD(LOG_UINT32, time, &time)           // time when data was received (ms)
+LOG_GROUP_STOP(locSrv)
+
+LOG_GROUP_START(locSrvZ)
+  LOG_ADD(LOG_INT16, x, &stateCompressed.x)                 // position - mm
+  LOG_ADD(LOG_INT16, y, &stateCompressed.y)
+  LOG_ADD(LOG_INT16, z, &stateCompressed.z)
+
+  LOG_ADD(LOG_UINT32, quat, &stateCompressed.quat)           // compressed quaternion, see quatcompress.h
+
+  LOG_ADD(LOG_UINT16, time, &stateCompressed.time)           // time when data was received (ms)
+LOG_GROUP_STOP(locSrvZ)
 
 PARAM_GROUP_START(locSrv)
   PARAM_ADD(PARAM_UINT8, enRangeStreamFP32, &enableRangeStreamFloat)

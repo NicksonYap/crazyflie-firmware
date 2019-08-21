@@ -92,6 +92,8 @@ static float i_error_m_z = 0;
 
 // Logging variables
 static struct vec z_axis_desired;
+static float roll_desired; // deg
+static float pitch_desired; // deg
 
 void controllerMellingerReset(void)
 {
@@ -215,6 +217,9 @@ void controllerMellinger(control_t *control, setpoint_t *setpoint,
   // [xB_des]
   x_axis_desired = vcross(y_axis_desired, z_axis_desired);
 
+  pitch_desired = degrees(asinf(-x_axis_desired.z));
+  roll_desired  = degrees(atan2f(y_axis_desired.z, z_axis_desired.z));
+
   // [eR]
   // Slow version
   // struct mat33 Rdes = mcolumns(
@@ -326,4 +331,6 @@ LOG_ADD(LOG_FLOAT, zdz, &z_axis_desired.z)
 LOG_ADD(LOG_FLOAT, i_err_x, &i_error_x)
 LOG_ADD(LOG_FLOAT, i_err_y, &i_error_y)
 LOG_ADD(LOG_FLOAT, i_err_z, &i_error_z)
+LOG_ADD(LOG_FLOAT, rolld, &roll_desired)
+LOG_ADD(LOG_FLOAT, pitchd, &pitch_desired)
 LOG_GROUP_STOP(ctrlMel)

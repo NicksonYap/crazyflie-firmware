@@ -696,6 +696,42 @@ static void rssiEffect(uint8_t buffer[][3], bool reset)
   }
 }
 
+static void packetRate(uint8_t buffer[][3], bool reset)
+{
+  int i;
+  static int varid;
+  uint32_t time_since_last_vicon_update; //ms
+  static int pmstateid;
+  int8_t pmstate;
+  static int tic = 0;
+  static bool batteryEverLow = false;
+
+  varid = logGetVarId("locSrv", "time");
+  time_since_last_vicon_update = xTaskGetTickCount() - logGetUint(varid);
+  if (time_since_last_vicon_update > 30) time_since_last_vicon_update = 30;
+
+  pmstateid = logGetVarId("pm", "state");
+  pmstate = logGetInt(pmstateid);
+  if (pmstate == lowPower) {
+    batteryEverLow = true;
+  }
+
+  for (i = 0; i < NBR_LEDS; i++) {
+    if (batteryEverLow && tic < 10) {
+      buffer[i][0] = 0;
+      buffer[i][1] = 0;
+      buffer[i][2] = 0;
+    } else {
+      buffer[i][0] = LIMIT(LINSCALE(0, 30, 0, 100, time_since_last_vicon_update)); // Red (long time_since_last_vicon_update)
+      buffer[i][1] = LIMIT(LINSCALE(0, 30, 100, 0, time_since_last_vicon_update)); // Green (short time_since_last_vicon_update)
+
+      buffer[i][2] = 0;
+    }
+  }
+
+  if (++tic >= 20) tic = 0;
+}
+
 /**************** Effect list ***************/
 
 
@@ -717,6 +753,7 @@ Ledring12Effect effectsFct[] =
   virtualMemEffect,
   fadeColorEffect,
   rssiEffect,
+  packetRate,
 };
 
 /********** Ring init and switching **********/

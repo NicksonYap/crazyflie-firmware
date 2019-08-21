@@ -47,7 +47,10 @@
 #include "power_distribution.h"
 
 #include "estimator.h"
+#include "crtp_commander_high_level.h"
+
 #include "usddeck.h"
+
 #include "quatcompress.h"
 
 static bool isInit;
@@ -64,6 +67,15 @@ static setpoint_t setpoint;
 static sensorData_t sensorData;
 static state_t state;
 static control_t control;
+
+// statistics
+static float error_dist; // euclidean distance error
+static float error_dist_last; // euclidean distance error over the last 1000 ms
+
+struct vec point2vec(point_t p)
+{
+  return mkvec(p.x, p.y, p.z);
+}
 
 static StateEstimatorType estimatorType;
 static ControllerType controllerType;
@@ -109,6 +121,8 @@ static struct {
   int16_t ax;
   int16_t ay;
   int16_t az;
+  // compressed quaternion, see quatcompress.h
+  int32_t quat;
 } setpointCompressed;
 
 static float accVarX[NBR_OF_MOTORS];
@@ -172,6 +186,13 @@ static void compressSetpoint()
   setpointCompressed.ax = setpoint.acceleration.x * 1000.0f;
   setpointCompressed.ay = setpoint.acceleration.y * 1000.0f;
   setpointCompressed.az = setpoint.acceleration.z * 1000.0f;
+
+  float const q[4] = {
+    setpoint.attitudeQuaternion.x,
+    setpoint.attitudeQuaternion.y,
+    setpoint.attitudeQuaternion.z,
+    setpoint.attitudeQuaternion.w};
+  setpointCompressed.quat = quatcompress(q);
 }
 
 void stabilizerInit(StateEstimatorType estimator)
@@ -193,6 +214,8 @@ void stabilizerInit(StateEstimatorType estimator)
   xTaskCreate(stabilizerTask, STABILIZER_TASK_NAME,
               STABILIZER_TASK_STACKSIZE, NULL, STABILIZER_TASK_PRI, NULL);
 
+  error_dist = 0;
+  error_dist_last = 0;
   isInit = true;
 }
 
@@ -282,17 +305,34 @@ static void stabilizerTask(void* param)
 
       checkEmergencyStopTimeout();
 
-      if (emergencyStop) {
+    // TODO: this should go into the sitAw framework
+    bool upsideDown = sensorData.acc.z < -0.5f;
+
+    if (emergencyStop || upsideDown) {
         powerStop();
+      controllerInit(getControllerType());
+      crtpCommanderHighLevelStop();
       } else {
         powerDistribution(&control);
-      }
+    }
+   // Log data to uSD card if configured
+   if (   usddeckLoggingEnabled()
+        && usddeckLoggingMode() == usddeckLoggingMode_SynchronousStabilizer
+        && RATE_DO_EXECUTE(usddeckFrequency(), tick)) {
+      usddeckTriggerLogging();
+    }
 
-      // Log data to uSD card if configured
-      if (   usddeckLoggingEnabled()
-          && usddeckLoggingMode() == usddeckLoggingMode_SynchronousStabilizer
-          && RATE_DO_EXECUTE(usddeckFrequency(), tick)) {
-        usddeckTriggerLogging();
+
+    // stats
+    if (!crtpCommanderHighLevelIsStopped()) {
+      float const dt = 1.0f / RATE_MAIN_LOOP;
+      struct vec dist = vsub(point2vec(setpoint.position), point2vec(state.position));
+      error_dist += dt * vmag(dist);
+
+      if (tick % 1000 == 0) {
+        error_dist_last = error_dist;
+        error_dist = 0;
+      }
       }
     }
     calcSensorToOutputLatency(&sensorData);
@@ -581,6 +621,8 @@ LOG_ADD(LOG_INT16, vz, &setpointCompressed.vz)
 LOG_ADD(LOG_INT16, ax, &setpointCompressed.ax) // acceleration - mm / sec^2
 LOG_ADD(LOG_INT16, ay, &setpointCompressed.ay)
 LOG_ADD(LOG_INT16, az, &setpointCompressed.az)
+
+LOG_ADD(LOG_UINT32, quat, &setpointCompressed.quat) // compressed quaternion, see quatcompress.h
 LOG_GROUP_STOP(ctrltargetZ)
 
 LOG_GROUP_START(stabilizer)
@@ -680,4 +722,8 @@ LOG_GROUP_STOP(stateEstimateZ)
 LOG_GROUP_START(latency)
 LOG_ADD(LOG_UINT32, intToOut, &inToOutLatency)
 LOG_GROUP_STOP(latency)
+
+LOG_GROUP_START(ctrlStat)
+LOG_ADD(LOG_FLOAT, edist, &error_dist_last)
+LOG_GROUP_STOP(ctrlStat)
 
