@@ -181,6 +181,11 @@ float pmGetBatteryVoltageMax(void)
   return batteryVoltageMax;
 }
 
+float pmGetChargeCurrent(void)
+{
+  return pmSyslinkInfo.chargeCurrent;
+}
+
 void pmSyslinkUpdate(SyslinkPacket *slp)
 {
   if (slp->type == SYSLINK_PM_BATTERY_STATE) {

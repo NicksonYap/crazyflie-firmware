@@ -32,6 +32,8 @@ static void appTimer(xTimerHandle timer);
 #define MAX_PAD_ERR 0.005
 #define TAKE_OFF_HEIGHT 0.2
 #define LANDING_HEIGHT 0.12
+#define MIN_IS_CHARGING_CURRENT 0.05f //50mA minimum to consider the drone as charging. This needs to be the current slightly lower than when charging at MAX_IS_CHARGING_VOLTAGE, otherwise it thinks it's not charging
+#define MAX_IS_CHARGING_VOLTAGE 4.15f //4.15V maximum otherwise don't need to charge
 #define SEQUENCE_SPEED 1.0
 #define DURATION_TO_INITIAL_POSITION 2.0
 
@@ -308,8 +310,12 @@ static void appTimer(xTimerHandle timer) {
       break;
     case STATE_CHECK_CHARGING:
       if (now > landingTimeCheckCharge) {
-        DEBUG_PRINT("isCharging: %d\n", isCharging());
-        if (isCharging()) {
+    	bool is_charging = isCharging();
+    	bool isActualChargingRequired = (pmGetBatteryVoltage() < MAX_IS_CHARGING_VOLTAGE);
+    	bool isActuallyCharging = is_charging && (pmGetChargeCurrent() >= MIN_IS_CHARGING_CURRENT);
+        DEBUG_PRINT("is_charging: %d\n", is_charging);
+        DEBUG_PRINT("isActuallyCharging: %d\n", isActuallyCharging);
+        if (is_charging && (!isActualChargingRequired || isActuallyCharging)) {
           ledseqRun(LED_LOCK, seq_lps_lock);
           state = STATE_WAIT_FOR_TAKE_OFF;
         } else {

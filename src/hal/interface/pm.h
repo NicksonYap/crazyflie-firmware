@@ -128,6 +128,11 @@ float pmGetBatteryVoltageMin(void);
 float pmGetBatteryVoltageMax(void);
 
 /**
+ * Returns the charge current in amperes as a float
+ */
+float pmGetChargeCurrent(void);
+
+/**
  * Updates and calculates battery values.
  * Should be called for every new adcValues sample.
  */
