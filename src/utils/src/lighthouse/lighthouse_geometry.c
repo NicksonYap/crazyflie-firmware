@@ -37,6 +37,7 @@
 #include "lighthouse_geometry.h"
 
 #include <arm_math.h>
+#include "singular_value_decomposition.h"
 
 static void vec_cross_product(const vec3d a, const vec3d b, vec3d res) {
     res[0] = a[1]*b[2] - a[2]*b[1];
@@ -53,7 +54,9 @@ static float vec_length(vec3d vec) {
     return res;
 }
 
-static void calc_ray_vec(baseStationGeometry_t *bs, float angle1, float angle2, vec3d res, vec3d origin) {
+void calc_ray_vec(baseStationGeometry_t *bs, float angle1, float angle2, vec3d res, vec3d origin) {
+
+
     vec3d a = {arm_cos_f32(angle1), 0, -arm_sin_f32(angle1)};  // Normal vector to X plane
     vec3d b = {0, arm_cos_f32(angle2), arm_sin_f32(angle2)};   // Normal vector to Y plane
 
@@ -126,4 +129,150 @@ bool lighthouseGeometryGetPosition(baseStationGeometry_t baseStations[2], float 
   calc_ray_vec(&baseStations[1], angles[2], angles[3], ray2, origin2);
 
   return intersect_lines(origin1, ray1, origin2, ray2, position, position_delta);
+}
+
+bool lighthouseGeometryBestFitBetweenRays(vec3d orig0, vec3d orig1, vec3d u, vec3d v, vec3d D, vec3d pt0, vec3d pt1)
+{
+
+	//calculate 'm'
+	float32_t m[1];
+	{
+		arm_matrix_instance_f32 u_t_mat = {1, 3, u}; //fast transpose
+		arm_matrix_instance_f32 v_mat = {3, 1, v};
+		arm_matrix_instance_f32 m_mat = {1, 1, m};
+		arm_mat_mult_f32(&u_t_mat, &v_mat, &m_mat);
+	}
+
+
+	//calculate 'c'
+	float32_t c[1];
+	{
+		vec3d Dw;
+		{
+			vec3d w;
+			arm_sub_f32(orig1, orig0, w, vec3d_size);
+			arm_sub_f32(D, w, Dw, vec3d_size);
+		}
+
+		arm_matrix_instance_f32 Dw_t_mat = {1, 3, Dw}; //faster way to create a transpose
+		arm_matrix_instance_f32 c_mat = {1, 1, c};
+		arm_matrix_instance_f32 v_mat = {3, 1, v};
+		arm_mat_mult_f32(&Dw_t_mat, &v_mat, &c_mat);
+	}
+
+
+	#define N_ROWS 3
+	#define N_COLS 1
+
+	//solve for 'x0'
+	float x0[N_COLS];
+	{
+		// A*x0 = B
+		// equivalents in MATLAB:
+		// x0 = A\B
+		// x0 = linsolve(A,B)
+		// x0 = pinv(A)*B
+
+
+		//obtain SVD of A
+		float U[N_ROWS][N_COLS];
+		float V[N_COLS][N_COLS];
+		float singular_values[N_COLS];
+		{
+			//calculate 'A'
+			vec3d A;
+			{
+				vec3d vm;
+				{
+					arm_matrix_instance_f32 vm_mat = {3, 1, vm};
+					arm_matrix_instance_f32 v_mat = {3, 1, v};
+					arm_matrix_instance_f32 m_mat = {1, 1, m};
+					arm_mat_mult_f32(&v_mat, &m_mat, &vm_mat);
+				}
+
+				arm_sub_f32(u, vm, A, vec3d_size);
+			}
+
+			float dummy_array[N_COLS];
+			int8_t svdError = Singular_Value_Decomposition((float*)A, N_ROWS, N_COLS, (float*)U, singular_values, (float*)V, dummy_array);
+			if (svdError != 0) { //cannot converge
+					return false;
+			}
+		}
+		//found SVD of A
+
+		//calculate 'B'
+		vec3d B;
+		{
+			vec3d vc;
+			{
+				arm_matrix_instance_f32 vc_mat = {3, 1, vc};
+				arm_matrix_instance_f32 v_mat = {3, 1, v};
+				arm_matrix_instance_f32 c_mat = {1, 1, c};
+				arm_mat_mult_f32(&v_mat, &c_mat, &vc_mat);
+			}
+
+			{
+				vec3d wD;
+				{
+					vec3d w;
+					arm_sub_f32(orig1, orig0, w, vec3d_size);
+					arm_sub_f32(w, D, wD, vec3d_size);
+				}
+
+				arm_add_f32(wD, vc, B, vec3d_size);
+			}
+		}
+		//found B
+
+		//solve for 'x0' using SVD of A and calculated B
+		#define tolerance 0.0001f
+		Singular_Value_Decomposition_Solve((float*) U, singular_values, (float*) V, tolerance, N_ROWS, N_COLS, B, x0);
+	}
+
+
+	//obtain the 2 points on each of the 2 rays
+
+	//calculate 'pt0' using 'x0'
+	{
+		vec3d ux0;
+		{
+			arm_matrix_instance_f32 ux0_mat = {3, 1, ux0};
+			arm_matrix_instance_f32 u_mat = {3, 1, u};
+			arm_matrix_instance_f32 x0_mat = {N_COLS, N_COLS, x0};
+			arm_mat_mult_f32(&u_mat, &x0_mat, &ux0_mat);
+		}
+		arm_add_f32(orig0, ux0, pt0, vec3d_size);
+	}
+
+	//calculate 'x1'
+	float x1[N_COLS];
+	{
+		float mx0[N_COLS];
+		arm_matrix_instance_f32 mx0_mat = {1, 1, mx0};
+		{
+			arm_matrix_instance_f32 m_mat = {1, 1, m};
+			arm_matrix_instance_f32 x0_mat = {N_COLS, N_COLS, x0};
+			arm_mat_mult_f32(&m_mat, &x0_mat, &mx0_mat);
+		}
+		{
+			arm_matrix_instance_f32 x1_mat = {1, 1, x1};
+			arm_matrix_instance_f32 c_mat = {1, 1, c};
+			arm_mat_add_f32(&mx0_mat, &c_mat, &x1_mat);
+		}
+	}
+
+	//calculate 'pt1' using 'x1'
+	{
+		vec3d vx1;
+		{
+			arm_matrix_instance_f32 vx1_mat = {3, 1, vx1};
+			arm_matrix_instance_f32 v_mat = {3, 1, v};
+			arm_matrix_instance_f32 x1_mat = {1, 1, x1};
+			arm_mat_mult_f32(&v_mat, &x1_mat, &vx1_mat);
+		}
+			arm_add_f32(orig1, vx1, pt1, vec3d_size);
+	}
+
+	return true;
 }

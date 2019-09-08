@@ -107,6 +107,9 @@ PROJ_OBJ += diskio_function_tests.o
 CFLAGS += -DUSD_RUN_DISKIO_FUNCTION_TESTS
 endif
 
+#mymathlib.com
+VPATH += $(LIB)/mymathlib.com
+
 # Crazyflie sources
 VPATH += src/init src/hal/src src/modules/src src/utils/src src/drivers/bosch/src src/drivers/src src/platform
 
@@ -158,7 +161,7 @@ PROJ_OBJ += position_estimator_altitude.o position_controller_pid.o
 PROJ_OBJ += estimator.o estimator_complementary.o
 PROJ_OBJ += controller.o controller_pid.o controller_mellinger.o
 PROJ_OBJ += power_distribution_$(POWER_DISTRIBUTION).o
-PROJ_OBJ += estimator_kalman.o kalman_core.o
+PROJ_OBJ += estimator_kalman.o kalman_core.o kalman_supervisor.o
 
 # High-Level Commander
 PROJ_OBJ += crtp_commander_high_level.o planner.o pptraj.o
@@ -191,6 +194,7 @@ PROJ_OBJ += flowdeck_v1v2.o
 PROJ_OBJ += oa.o
 PROJ_OBJ += multiranger.o
 PROJ_OBJ += lighthouse.o
+PROJ_OBJ += activeMarkerDeck.o
 
 ifeq ($(LPS_TDOA_ENABLE), 1)
 CFLAGS += -DLPS_TDOA_ENABLE
@@ -238,6 +242,9 @@ endif
 
 PROJ_OBJ += app.o
 
+# mymathlib.com
+PROJ_OBJ += singular_value_decomposition.o
+
 # Libs
 PROJ_OBJ += libarm_math.a
 
@@ -268,6 +275,7 @@ INCLUDES += -Ivendor/libdw1000/inc
 INCLUDES += -I$(LIB)/FatFS
 INCLUDES += -I$(LIB)/vl53l1
 INCLUDES += -I$(LIB)/vl53l1/core/inc
+INCLUDES += -I$(LIB)/mymathlib.com
 
 ifeq ($(DEBUG), 1)
   CFLAGS += -O0 -g3 -DDEBUG
