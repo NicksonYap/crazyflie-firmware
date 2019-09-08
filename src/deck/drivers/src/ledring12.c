@@ -701,7 +701,7 @@ static void rssiEffect(uint8_t buffer[][3], bool reset)
  *
  * Red means bad, green means good.
  */
-static float badRate = 0, goodRate = 120;
+static float badRate = 0, goodRate = 60; //will max at 60Hz for 1 BS, and 120Hz for 2 BS, but we only want to know if position was even received
 static void lighthouseRateEffect(uint8_t buffer[][3], bool reset)
 {
   int i;
