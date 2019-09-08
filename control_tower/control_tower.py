@@ -34,6 +34,9 @@ import math
 
 import zmq
 
+MIN_IS_CHARGING_CURRENT = 0.05
+MAX_IS_CHARGING_VOLTAGE = 4.20
+
 class TrafficController:
     CS_DISCONNECTED = 0
     CS_CONNECTING = 1
@@ -116,7 +119,7 @@ class TrafficController:
                self.copter_state == self.STATE_REPOSITION_ON_PAD
 
     def is_charging(self):
-        return self.copter_state == self.STATE_WAIT_FOR_TAKE_OFF and not self._pre_state_taking_off()
+        return self.copter_state == self.STATE_WAIT_FOR_TAKE_OFF and not self._pre_state_taking_off() #not really a good way to represent charging state
 
     def is_crashed(self):
         return self.copter_state == self.STATE_CRASHED
@@ -153,7 +156,9 @@ class TrafficController:
 
     def is_charged_for_flight(self):
         # return self.vbat > 4.0
-        return self.vbat > 3.9
+        # return self.vbat > 3.9
+        return self.vbat > 3.85
+        # return self.vbat > 3.8
 
     def get_traj_cycles(self):
         return self.traj_cycles
@@ -209,7 +214,7 @@ class TrafficController:
 
     def _setup_logging(self):
         # print("Setting up logging")
-        self._log_conf = LogConfig(name='Tower', period_in_ms=100)
+        self._log_conf = LogConfig(name='Tower', period_in_ms=500)
         self._log_conf.add_variable('app.state', 'uint8_t')
         self._log_conf.add_variable('app.prgr', 'float')
         self._log_conf.add_variable('app.uptime', 'uint32_t')
@@ -285,21 +290,30 @@ class TowerBase:
 
         charging_controllers = []
         for controller in self.controllers:
-            if controller.is_charging():
+            if controller.is_charging() or controller.get_charge_current() >= MIN_IS_CHARGING_CURRENT or controller.get_charge_level() >= MAX_IS_CHARGING_VOLTAGE :
                 charge = controller.get_charge_level()
                 if controller.is_charged_for_flight():
                     charging_controllers.append((controller, charge))
+                    print("Controller is charged for flight:", controller.uri)
                 else:
                     too_low_battery.append(
                         # "{} ({:.2f}V)".format(controller.uri, charge))
                         "{} ({:.3f}V)".format(controller.uri, charge))
+                    print("Controller battery too low for flight:", controller.uri)
+            else:
+                print("Controller not charging:", controller.uri)
 
         if len(too_low_battery) > 0:
             print("Ready but must charge:", too_low_battery)
 
-        charging_controllers.sort(key=lambda d: d[1], reverse=True)
+        charging_controllers.sort(key=lambda d: d[1], reverse=True) # sort by highest voltage first
 
-        return list(map(lambda d: d[0], charging_controllers))
+        best_controllers = list(map(lambda d: d[0], charging_controllers))
+        print("best_controllers:")
+        for controller in best_controllers:
+            print(controller.uri)
+
+        return best_controllers
 
     def land_all(self):
         for controller in self.controllers:
@@ -392,6 +406,8 @@ class Tower(TowerBase):
                 if best_controller:
                     print("Preparing " + best_controller.uri)
                     new_prepared_count += 1
+
+                    best_controller._cf.param.set_value('ring.effect', '16')
                     best_controller.take_off()
             print("Prepared", new_prepared_count, "copter(s)")
 
@@ -504,6 +520,8 @@ class SyncTower(TowerBase):
                 if best_controller:
                     print("Preparing " + best_controller.uri)
                     new_prepared_count += 1
+
+                    best_controller._cf.param.set_value('ring.effect', '16')
                     best_controller.take_off()
             print("Prepared", new_prepared_count, "copter(s)")
 
@@ -534,14 +552,19 @@ class SyncTower(TowerBase):
 
 
 uris = [
-    'radio://0/10/2M/E7E7E7E701',
-    'radio://0/10/2M/E7E7E7E702',
-    'radio://0/10/2M/E7E7E7E703',
-    'radio://0/10/2M/E7E7E7E704',
-    'radio://1/10/2M/E7E7E7E705',
-    'radio://1/10/2M/E7E7E7E706',
-    'radio://1/10/2M/E7E7E7E707',
-    'radio://1/10/2M/E7E7E7E708',
+    # 'radio://0/80/2M',
+    
+    'radio://0/80/2M/E7E7E7E701',
+    'radio://0/80/2M/E7E7E7E702',
+
+    # 'radio://0/10/2M/E7E7E7E701',
+    # 'radio://0/10/2M/E7E7E7E702',
+    # 'radio://0/10/2M/E7E7E7E703',
+    # 'radio://0/10/2M/E7E7E7E704',
+    # 'radio://1/10/2M/E7E7E7E705',
+    # 'radio://1/10/2M/E7E7E7E706',
+    # 'radio://1/10/2M/E7E7E7E707',
+    # 'radio://1/10/2M/E7E7E7E708',
 ]
 
 count = 1

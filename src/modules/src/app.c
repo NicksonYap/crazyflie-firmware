@@ -31,9 +31,10 @@ static void appTimer(xTimerHandle timer);
 #define LOCK_THRESHOLD 0.001f
 #define MAX_PAD_ERR 0.005
 #define TAKE_OFF_HEIGHT 0.2
-#define LANDING_HEIGHT 0.12
+//#define LANDING_HEIGHT 0.12
+#define LANDING_HEIGHT 0.10 //try to stay low to be accurate but needs to be high enough to self-adjust
 #define MIN_IS_CHARGING_CURRENT 0.05f //50mA minimum to consider the drone as charging. This needs to be the current slightly lower than when charging at MAX_IS_CHARGING_VOLTAGE, otherwise it thinks it's not charging
-#define MAX_IS_CHARGING_VOLTAGE 4.15f //4.15V maximum otherwise don't need to charge
+#define MAX_IS_CHARGING_VOLTAGE 4.20f //4.20V maximum otherwise don't need to charge
 #define SEQUENCE_SPEED 1.0
 #define DURATION_TO_INITIAL_POSITION 2.0
 
@@ -133,7 +134,7 @@ static float reorganizeData(float sequence[], int size) {
   const int perRow = 1 + 8 * 4;
   float totalDuration = 0.0f;
 
-  for (int i = 0; i < count / perRow; i++) {
+  for (int i = 0; i < count / perRow; i++) { //this reorganizing should be done externally
     float* row = &sequence[i * perRow];
     float duration = row[0];
 
@@ -203,13 +204,13 @@ static void appTimer(xTimerHandle timer) {
         takeOffWhenReady = false;
         DEBUG_PRINT("Taking off!\n");
 
-        padX = getX();
+        padX = getX(); //should get average
         padY = getY();
         padZ = getZ();
         DEBUG_PRINT("Base position: (%f, %f, %f)\n", (double)padX, (double)padY, (double)padZ);
 
         terminateTrajectoryAndLand = false;
-        crtpCommanderHighLevelTakeOff((double)padZ + TAKE_OFF_HEIGHT, 1.0, 0);
+        crtpCommanderHighLevelTakeOff((double)padZ + TAKE_OFF_HEIGHT, 1.0, 0); //this height is relative to the charging pad, should be absolute?
         state = STATE_TAKING_OFF;
       }
       break;
@@ -324,10 +325,11 @@ static void appTimer(xTimerHandle timer) {
           state = STATE_REPOSITION_ON_PAD;
         }
       }
+      //may not need to check charge status, if decided to take off
       break;
     case STATE_REPOSITION_ON_PAD:
       if (crtpCommanderHighLevelIsTrajectoryFinished()) {
-        DEBUG_PRINT("Over pad, stabalizing position\n");
+        DEBUG_PRINT("Over pad, stabilizing position\n");
         crtpCommanderHighLevelGoTo(padX, padY, (double)padZ + LANDING_HEIGHT, 0.0, 1.5, false, 0);
         state = STATE_GOING_TO_PAD;
       }
