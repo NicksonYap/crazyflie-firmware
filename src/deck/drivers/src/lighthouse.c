@@ -89,10 +89,10 @@ vec3d S[PULSE_PROCESSOR_N_SENSORS][PULSE_PROCESSOR_N_SENSORS];
 
 #define LH_FPGA_RESET DECK_GPIO_RX2
 
-static uint32_t TS_DIFF(uint32_t x, uint32_t y) {
-  const uint32_t bitmask = (1 << TIMESTAMP_BITWIDTH) - 1;
-  return (x - y) & bitmask;
-}
+//static uint32_t TS_DIFF(uint32_t x, uint32_t y) {
+//  const uint32_t bitmask = (1 << TIMESTAMP_BITWIDTH) - 1;
+//  return (x - y) & bitmask;
+//}
 
 #ifndef FORCE_FLASH
 #define FORCE_FLASH false
@@ -276,6 +276,8 @@ void estimatePosition(pulseProcessor_t *state, pulseProcessorResult_t angles[])
 
     uint8_t ray_pairs_count = 0;
 
+    float accum_pos[3] = {0};
+
 		for (uint8_t i = 0; i < rays_count; i++) {
 			for (uint8_t j = 0; j < rays_count; j++) {
 
@@ -294,7 +296,7 @@ void estimatePosition(pulseProcessor_t *state, pulseProcessorResult_t angles[])
 					if(rays[i].sensor != rays[j].sensor){ //if rays do not fall on same sensor, find the vector between sensors
 						float R[3][3]; //Estimated rotation matrix of the Sensors
 						estimatorKalmanGetEstimatedRotationMatrix(R);
-						arm_matrix_instance_f32 R_mat = {3, 3, R};
+						arm_matrix_instance_f32 R_mat = {3, 3, (float*)R};
 
 //						vec3d S = {}; //the vector between the 2 sensors
 //						arm_sub_f32(lighthouseSensorsGeometry[rays[j].sensor], lighthouseSensorsGeometry[rays[i].sensor], S, vec3d_size);
@@ -334,12 +336,9 @@ void estimatePosition(pulseProcessor_t *state, pulseProcessorResult_t angles[])
 						}
 
 
-						if(ray_pairs_count == 0){
-							memset(&ext_pos, 0, sizeof(ext_pos)); //reset ext_pos once
-						}
-						ext_pos.x += pt_mid[0];
-						ext_pos.y += pt_mid[1];
-						ext_pos.z += pt_mid[2];
+						accum_pos[0] += pt_mid[0];
+						accum_pos[1] += pt_mid[1];
+						accum_pos[2] += pt_mid[2];
 						ray_pairs_count++;
 
 
@@ -356,9 +355,9 @@ void estimatePosition(pulseProcessor_t *state, pulseProcessorResult_t angles[])
 
 
 		if(ray_pairs_count > 0){
-			ext_pos.x /= ray_pairs_count;
-			ext_pos.y /= ray_pairs_count;
-			ext_pos.z /= ray_pairs_count;
+			ext_pos.x = accum_pos[0] / ray_pairs_count;
+			ext_pos.y = accum_pos[1] / ray_pairs_count;
+			ext_pos.z = accum_pos[2] / ray_pairs_count;
 
 		  // Make sure we feed sane data into the estimator
 		  if (!isfinite(ext_pos.pos[0]) || !isfinite(ext_pos.pos[1]) || !isfinite(ext_pos.pos[2])) {
@@ -407,6 +406,7 @@ static void lighthouseTask(void *param)
   systemWaitStart();
 
   fpgaTriggerReset();
+  vTaskDelay(M2T(100)); //add some delay since FPGA just woke up from reset
 
 #ifdef LH_FLASH_DECK
   // Flash deck bootloader using SPI (factory and recovery flashing)
