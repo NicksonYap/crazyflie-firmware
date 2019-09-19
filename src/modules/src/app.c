@@ -32,11 +32,18 @@ static void appTimer(xTimerHandle timer);
 #define MAX_PAD_ERR 0.005
 #define TAKE_OFF_HEIGHT 0.2
 //#define LANDING_HEIGHT 0.12
-#define LANDING_HEIGHT 0.10 //try to stay low to be accurate but needs to be high enough to self-adjust
+//#define LANDING_HEIGHT 0.10 //try to stay low to be accurate but needs to be high enough to self-adjust
+#define LANDING_HEIGHT 0.00 //maybe just land?
+#define RELANDING_HEIGHT 0.12
 #define MIN_IS_CHARGING_CURRENT 0.05f //50mA minimum to consider the drone as charging. This needs to be the current slightly lower than when charging at MAX_IS_CHARGING_VOLTAGE, otherwise it thinks it's not charging
 #define MAX_IS_CHARGING_VOLTAGE 4.20f //4.20V maximum otherwise don't need to charge
 #define SEQUENCE_SPEED 1.0
 #define DURATION_TO_INITIAL_POSITION 2.0
+
+//#define TIME_TO_PAD_POSITION 2.0f
+#define TIME_TO_PAD_POSITION 5.0f
+//#define LANDING_TIMEOUT 5000
+#define LANDING_TIMEOUT 100
 
 static uint32_t lockWriteIndex;
 static float lockData[LOCK_LENGTH][3];
@@ -266,8 +273,7 @@ static void appTimer(xTimerHandle timer) {
         if (terminateTrajectoryAndLand || (remainingTrajectories == 0)) {
           terminateTrajectoryAndLand = false;
           DEBUG_PRINT("Terminating trajectory, going to pad...\n");
-          float timeToPadPosition = 2.0;
-          crtpCommanderHighLevelGoTo(padX, padY, (double)padZ + LANDING_HEIGHT, 0.0, timeToPadPosition, false, 0);
+          crtpCommanderHighLevelGoTo(padX, padY, (double)padZ + LANDING_HEIGHT, 0.0, TIME_TO_PAD_POSITION, false, 0);
           currentProgressInTrajectory = NO_PROGRESS;
           state = STATE_GOING_TO_PAD;
         } else {
@@ -283,7 +289,7 @@ static void appTimer(xTimerHandle timer) {
     case STATE_GOING_TO_PAD:
       if (crtpCommanderHighLevelIsTrajectoryFinished()) {
         DEBUG_PRINT("Over pad, stabalizing position\n");
-        stabilizeEndTime = now + 5000;
+        stabilizeEndTime = now + LANDING_TIMEOUT;
         state = STATE_WAITING_AT_PAD;
       }
       flightTime += delta;
@@ -321,7 +327,7 @@ static void appTimer(xTimerHandle timer) {
           state = STATE_WAIT_FOR_TAKE_OFF;
         } else {
           DEBUG_PRINT("Not charging. Try to reposition on pad.\n");
-          crtpCommanderHighLevelTakeOff((double)padZ + LANDING_HEIGHT, 1.0, 0);
+          crtpCommanderHighLevelTakeOff((double)padZ + RELANDING_HEIGHT, 1.0, 0);
           state = STATE_REPOSITION_ON_PAD;
         }
       }
