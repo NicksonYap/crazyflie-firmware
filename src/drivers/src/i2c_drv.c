@@ -320,8 +320,8 @@ static void i2cdrvInitBus(I2cDrv* i2c)
 
   i2cdrvDmaSetupBus(i2c);
 
-  i2c->isBusFreeSemaphore = xSemaphoreCreateBinary();
-  i2c->isBusFreeMutex = xSemaphoreCreateMutex();
+  i2c->isBusFreeSemaphore = xSemaphoreCreateBinaryStatic(&i2c->isBusFreeSemaphoreBuffer);
+  i2c->isBusFreeMutex = xSemaphoreCreateMutexStatic(&i2c->isBusFreeMutexBuffer);
 }
 
 static void i2cdrvdevUnlockBus(GPIO_TypeDef* portSCL, GPIO_TypeDef* portSDA, uint16_t pinSCL, uint16_t pinSDA)
@@ -368,7 +368,7 @@ void i2cdrvInit(I2cDrv* i2c)
 
 void i2cdrvCreateMessage(I2cMessage *message,
                       uint8_t  slaveAddress,
-                      uint8_t  direction,
+                      I2cDirection  direction,
                       uint32_t length,
                       uint8_t  *buffer)
 {
@@ -386,7 +386,7 @@ void i2cdrvCreateMessageIntAddr(I2cMessage *message,
                              uint8_t  slaveAddress,
                              bool IsInternal16,
                              uint16_t intAddress,
-                             uint8_t  direction,
+                             I2cDirection  direction,
                              uint32_t length,
                              uint8_t  *buffer)
 {
@@ -660,4 +660,3 @@ void __attribute__((used)) DMA1_Stream2_IRQHandler(void)
 {
   i2cdrvDmaIsrHandler(&sensorsBus);
 }
-

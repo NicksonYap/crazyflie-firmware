@@ -54,6 +54,7 @@ such as: take-off, landing, polynomial trajectories.
 #include "planner.h"
 #include "log.h"
 #include "param.h"
+#include "static_mem.h"
 
 // Local types
 enum TrajectoryLocation_e {
@@ -64,6 +65,7 @@ enum TrajectoryLocation_e {
 
 enum TrajectoryType_e {
   TRAJECTORY_TYPE_POLY4D = 0, // struct poly4d, see pptraj.h
+  TRAJECTORY_TYPE_POLY4D_COMPRESSED = 1, // see pptraj_compressed.h
   // Future types might include versions without yaw
 };
 
@@ -90,21 +92,27 @@ static uint8_t group_mask;
 static struct vec pos; // last known setpoint (position [m])
 static float yaw; // last known setpoint yaw (yaw [rad])
 static struct piecewise_traj trajectory;
+static struct piecewise_traj_compressed  compressed_trajectory;
 
 // makes sure that we don't evaluate the trajectory while it is being changed
 static xSemaphoreHandle lockTraj;
+static StaticSemaphore_t lockTrajBuffer;
+
+STATIC_MEM_TASK_ALLOC(crtpCommanderHighLevelTask, CMD_HIGH_LEVEL_TASK_STACKSIZE);
 
 // CRTP Packet definitions
 
 // trajectory command (first byte of crtp packet)
 enum TrajectoryCommand_e {
   COMMAND_SET_GROUP_MASK          = 0,
-  COMMAND_TAKEOFF                 = 1,
-  COMMAND_LAND                    = 2,
+  COMMAND_TAKEOFF                 = 1, // Deprecated, use COMMAND_TAKEOFF_2
+  COMMAND_LAND                    = 2, // Deprecated, use COMMAND_LAND_2
   COMMAND_STOP                    = 3,
   COMMAND_GO_TO                   = 4,
   COMMAND_START_TRAJECTORY        = 5,
   COMMAND_DEFINE_TRAJECTORY       = 6,
+  COMMAND_TAKEOFF_2               = 7,
+  COMMAND_LAND_2                  = 8,
 };
 
 struct data_set_group_mask {
@@ -112,16 +120,36 @@ struct data_set_group_mask {
 } __attribute__((packed));
 
 // vertical takeoff from current x-y position to given height
+// Deprecated
 struct data_takeoff {
   uint8_t groupMask;        // mask for which CFs this should apply to
   float height;             // m (absolute)
   float duration;           // s (time it should take until target height is reached)
 } __attribute__((packed));
 
+// vertical takeoff from current x-y position to given height
+struct data_takeoff_2 {
+  uint8_t groupMask;        // mask for which CFs this should apply to
+  float height;             // m (absolute)
+  float yaw;                // rad
+  bool useCurrentYaw;       // If true, use the current yaw (ignore the yaw parameter)
+  float duration;           // s (time it should take until target height is reached)
+} __attribute__((packed));
+
 // vertical land from current x-y position to given height
+// Deprecated
 struct data_land {
   uint8_t groupMask;        // mask for which CFs this should apply to
   float height;             // m (absolute)
+  float duration;           // s (time it should take until target height is reached)
+} __attribute__((packed));
+
+// vertical land from current x-y position to given height
+struct data_land_2 {
+  uint8_t groupMask;        // mask for which CFs this should apply to
+  float height;             // m (absolute)
+  float yaw;                // rad
+  bool useCurrentYaw;       // If true, use the current yaw (ignore the yaw parameter)
   float duration;           // s (time it should take until target height is reached)
 } __attribute__((packed));
 
@@ -137,7 +165,7 @@ struct data_go_to {
   float x; // m
   float y; // m
   float z; // m
-  float yaw; // deg
+  float yaw; // rad
   float duration; // sec
 } __attribute__((packed));
 
@@ -162,6 +190,8 @@ static void crtpCommanderHighLevelTask(void * prm);
 static int set_group_mask(const struct data_set_group_mask* data);
 static int takeoff(const struct data_takeoff* data);
 static int land(const struct data_land* data);
+static int takeoff2(const struct data_takeoff_2* data);
+static int land2(const struct data_land_2* data);
 static int stop(const struct data_stop* data);
 static int go_to(const struct data_go_to* data);
 static int start_trajectory(const struct data_start_trajectory* data);
@@ -186,10 +216,9 @@ void crtpCommanderHighLevelInit(void)
   plan_init(&planner);
 
   //Start the trajectory task
-  xTaskCreate(crtpCommanderHighLevelTask, CMD_HIGH_LEVEL_TASK_NAME,
-              CMD_HIGH_LEVEL_TASK_STACKSIZE, NULL, CMD_HIGH_LEVEL_TASK_PRI, NULL);
+  STATIC_MEM_TASK_CREATE(crtpCommanderHighLevelTask, crtpCommanderHighLevelTask, CMD_HIGH_LEVEL_TASK_NAME, NULL, CMD_HIGH_LEVEL_TASK_PRI);
 
-  lockTraj = xSemaphoreCreateMutex();
+  lockTraj = xSemaphoreCreateMutexStatic(&lockTrajBuffer);
 
   pos = vzero();
   yaw = 0;
@@ -272,6 +301,12 @@ void crtpCommanderHighLevelTask(void * prm)
       case COMMAND_LAND:
         ret = land((const struct data_land*)&p.data[1]);
         break;
+      case COMMAND_TAKEOFF_2:
+        ret = takeoff2((const struct data_takeoff_2*)&p.data[1]);
+        break;
+      case COMMAND_LAND_2:
+        ret = land2((const struct data_land_2*)&p.data[1]);
+        break;
       case COMMAND_STOP:
         ret = stop((const struct data_stop*)&p.data[1]);
         break;
@@ -313,12 +348,29 @@ int crtpCommanderHighLevelTakeOff(float height, float duration, uint8_t groupMas
   if (isInGroup(groupMask)) {
     xSemaphoreTake(lockTraj, portMAX_DELAY);
     float t = usecTimestamp() / 1e6;
-    result = plan_takeoff(&planner, pos, yaw, height, duration, t);
+    result = plan_takeoff(&planner, pos, yaw, height, 0.0f, duration, t);
     xSemaphoreGive(lockTraj);
   }
   return result;
 }
 
+int takeoff2(const struct data_takeoff_2* data)
+{
+  int result = 0;
+  if (isInGroup(data->groupMask)) {
+    xSemaphoreTake(lockTraj, portMAX_DELAY);
+    float t = usecTimestamp() / 1e6;
+
+    float hover_yaw = data->yaw;
+    if (data->useCurrentYaw) {
+      hover_yaw = yaw;
+    }
+
+    result = plan_takeoff(&planner, pos, yaw, data->height, hover_yaw, data->duration, t);
+    xSemaphoreGive(lockTraj);
+  }
+  return result;
+}
 int land(const struct data_land* data){
   return crtpCommanderHighLevelLand(data->height, data->duration, data->groupMask);
 }
@@ -329,7 +381,25 @@ int crtpCommanderHighLevelLand(float height, float duration, uint8_t groupMask)
   if (isInGroup(groupMask)) {
     xSemaphoreTake(lockTraj, portMAX_DELAY);
     float t = usecTimestamp() / 1e6;
-    result = plan_land(&planner, pos, yaw, height, duration, t);
+    result = plan_land(&planner, pos, yaw, height, 0.0f, duration, t);
+    xSemaphoreGive(lockTraj);
+  }
+  return result;
+}
+
+int land2(const struct data_land_2* data)
+{
+  int result = 0;
+  if (isInGroup(data->groupMask)) {
+    xSemaphoreTake(lockTraj, portMAX_DELAY);
+    float t = usecTimestamp() / 1e6;
+
+    float hover_yaw = data->yaw;
+    if (data->useCurrentYaw) {
+      hover_yaw = yaw;
+    }
+
+    result = plan_land(&planner, pos, yaw, data->height, hover_yaw, data->duration, t);
     xSemaphoreGive(lockTraj);
   }
   return result;
@@ -397,6 +467,32 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
         }
         result = plan_start_trajectory(&planner, &trajectory, reversed);
         xSemaphoreGive(lockTraj);
+      } else if (trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM
+          && trajDesc->trajectoryType == TRAJECTORY_TYPE_POLY4D_COMPRESSED) {
+
+        if (timescale != 1 || reversed) {
+          result = ENOEXEC;
+        } else {
+          xSemaphoreTake(lockTraj, portMAX_DELAY);
+          float t = usecTimestamp() / 1e6;
+          piecewise_compressed_load(
+            &compressed_trajectory,
+            &trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset]
+          );
+          compressed_trajectory.t_begin = t;
+          if (relative) {
+            struct traj_eval traj_init = piecewise_compressed_eval(
+              &compressed_trajectory, compressed_trajectory.t_begin
+            );
+            struct vec shift_pos = vsub(pos, traj_init.pos);
+            compressed_trajectory.shift = shift_pos;
+          } else {
+            compressed_trajectory.shift = vzero();
+          }
+          result = plan_start_compressed_trajectory(&planner, &compressed_trajectory);
+          xSemaphoreGive(lockTraj);
+        }
+
       }
     }
   }
