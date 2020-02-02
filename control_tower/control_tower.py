@@ -197,6 +197,7 @@ class TrafficController:
 
         self._cf = Crazyflie(rw_cache='./cache')
 
+        # self._cf.console.receivedChar.add_callback(lambda text: print(text, end="")) #uncomment to print console messages
         self._cf.connected.add_callback(self._connected)
         self._cf.disconnected.add_callback(self._disconnected)
         self._cf.connection_failed.add_callback(self._connection_failed)
