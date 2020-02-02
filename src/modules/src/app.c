@@ -71,7 +71,7 @@ static uint8_t remainingTrajectories = 0;
 
 extern bool lightHouseDeckHasCalculateAPosition;
 
-#define USE_MELLINGER
+//#define USE_MELLINGER
 
 #define TRAJ_Y_OFFSET 0.35
 
