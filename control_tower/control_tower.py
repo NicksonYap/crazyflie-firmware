@@ -168,6 +168,8 @@ class TrafficController:
         self.connection_state = self.CS_CONNECTED
         print('Connected to %s' % link_uri)
 
+        self._cf.param.set_value('stabilizer.controller', 2) #use mellinger
+        self._cf.param.set_value('ring.effect', '17')
         self.set_trajectory_count(2)
         self._setup_logging()
 
