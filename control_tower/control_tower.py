@@ -187,6 +187,7 @@ class TrafficController:
 
         self._cf.param.set_value('stabilizer.controller', 2) #use mellinger
         self._cf.param.set_value('ring.effect', '17')
+        self._cf.param.set_value('app.chargeLand', 0) #don't need to charge on land
         self.set_trajectory_count(2)
         self._setup_logging()
 
