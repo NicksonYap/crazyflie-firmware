@@ -54,6 +54,35 @@ extern uint8_t trajectories_memory[TRAJECTORY_MEMORY_SIZE];
 
 #define NUM_TRAJECTORY_DEFINITIONS 10
 
+// Local types
+enum TrajectoryLocation_e {
+  TRAJECTORY_LOCATION_INVALID = 0,
+  TRAJECTORY_LOCATION_MEM     = 1, // for trajectories that are uploaded dynamically
+  TRAJECTORY_LOCATION_FLASH   = 2, // for trajectories that are compiled in flash
+  // Future features might include trajectories on flash or uSD card
+};
+
+enum TrajectoryType_e {
+  TRAJECTORY_TYPE_POLY4D = 0, // struct poly4d, see pptraj.h
+  TRAJECTORY_TYPE_POLY4D_COMPRESSED = 1, // see pptraj_compressed.h
+  // Future types might include versions without yaw
+};
+
+// CRTP Packet definitions
+
+// trajectory command (first byte of crtp packet)
+enum TrajectoryCommand_e {
+  COMMAND_SET_GROUP_MASK          = 0,
+  COMMAND_TAKEOFF                 = 1, // Deprecated, use COMMAND_TAKEOFF_2
+  COMMAND_LAND                    = 2, // Deprecated, use COMMAND_LAND_2
+  COMMAND_STOP                    = 3,
+  COMMAND_GO_TO                   = 4,
+  COMMAND_START_TRAJECTORY        = 5,
+  COMMAND_DEFINE_TRAJECTORY       = 6,
+  COMMAND_TAKEOFF_2               = 7,
+  COMMAND_LAND_2                  = 8,
+};
+
 /* Public functions */
 void crtpCommanderHighLevelInit(void);
 
@@ -73,6 +102,6 @@ int crtpCommanderHighLevelTakeOff(float height, float duration, uint8_t groupMas
 int crtpCommanderHighLevelLand(float height, float duration, uint8_t groupMask);
 int crtpCommanderHighLevelGoTo(float x, float y, float z, float yaw, float duration, bool relative, uint8_t groupMask);
 int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale, bool relative, bool reversed, uint8_t groupMask);
-int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset, float* data, uint32_t size);
+int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset, float* data, uint32_t size, uint8_t trajectoryLocation);
 
 #endif /* CRTP_COMMANDER_HIGH_LEVEL_H_ */

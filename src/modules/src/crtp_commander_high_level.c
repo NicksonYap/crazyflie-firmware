@@ -56,19 +56,6 @@ such as: take-off, landing, polynomial trajectories.
 #include "param.h"
 #include "static_mem.h"
 
-// Local types
-enum TrajectoryLocation_e {
-  TRAJECTORY_LOCATION_INVALID = 0,
-  TRAJECTORY_LOCATION_MEM     = 1, // for trajectories that are uploaded dynamically
-  // Future features might include trajectories on flash or uSD card
-};
-
-enum TrajectoryType_e {
-  TRAJECTORY_TYPE_POLY4D = 0, // struct poly4d, see pptraj.h
-  TRAJECTORY_TYPE_POLY4D_COMPRESSED = 1, // see pptraj_compressed.h
-  // Future types might include versions without yaw
-};
-
 struct trajectoryDescription
 {
   uint8_t trajectoryLocation; // one of TrajectoryLocation_e
@@ -99,21 +86,6 @@ static xSemaphoreHandle lockTraj;
 static StaticSemaphore_t lockTrajBuffer;
 
 STATIC_MEM_TASK_ALLOC(crtpCommanderHighLevelTask, CMD_HIGH_LEVEL_TASK_STACKSIZE);
-
-// CRTP Packet definitions
-
-// trajectory command (first byte of crtp packet)
-enum TrajectoryCommand_e {
-  COMMAND_SET_GROUP_MASK          = 0,
-  COMMAND_TAKEOFF                 = 1, // Deprecated, use COMMAND_TAKEOFF_2
-  COMMAND_LAND                    = 2, // Deprecated, use COMMAND_LAND_2
-  COMMAND_STOP                    = 3,
-  COMMAND_GO_TO                   = 4,
-  COMMAND_START_TRAJECTORY        = 5,
-  COMMAND_DEFINE_TRAJECTORY       = 6,
-  COMMAND_TAKEOFF_2               = 7,
-  COMMAND_LAND_2                  = 8,
-};
 
 struct data_set_group_mask {
   uint8_t groupMask; // mask for which groups this CF belongs to
@@ -508,7 +480,7 @@ int define_trajectory(const struct data_define_trajectory* data)
   return 0;
 }
 
-int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset, float* data, uint32_t size) {
+int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset, float* data, uint32_t size, uint8_t trajectoryLocation) {
   memcpy(trajectories_memory, data,  size);
 
   struct data_define_trajectory def = {
