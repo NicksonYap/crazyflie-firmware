@@ -26,15 +26,26 @@ class Crazyflie(ttk.Frame):
         self._battery_frame.grid(row=3, column=0, sticky="ew")
         self._battery_frame.columnconfigure(1, weight=2)
 
-        self._battery_voltage = ttk.Label(self._battery_frame, text="3.0V", padding=(0,0,10,0))
+        self._battery_voltage = ttk.Label(self._battery_frame, text="3.000V", padding=(0,0,10,0))
         self._battery_voltage.grid(row=0, column=0)
         
         self._battery_bar = ttk.Progressbar(self._battery_frame, orient=HORIZONTAL)
         self._battery_bar['value'] = 50
         self._battery_bar.grid(row=0, column=1, sticky="ew")
 
+        self._charge_current_frame = ttk.Frame(self)
+        self._charge_current_frame.grid(row=4, column=0, sticky="ew")
+        self._charge_current_frame.columnconfigure(1, weight=2)
+
+        self._charge_current = ttk.Label(self._charge_current_frame, text="0.000A", padding=(0,0,10,0))
+        self._charge_current.grid(row=0, column=0)
+
+        self._charge_current_bar = ttk.Progressbar(self._charge_current_frame, orient=HORIZONTAL)
+        self._charge_current_bar['value'] = 50
+        self._charge_current_bar.grid(row=0, column=1, sticky="ew")
+
         self._time_frame = ttk.Frame(self)
-        self._time_frame.grid(row=4, column=0)
+        self._time_frame.grid(row=5, column=0)
 
         up_time = Label(self._time_frame, text="Up time: ", fg="grey", font=("ubuntu", 20))
         up_time.grid(row=0, column=0)
@@ -72,11 +83,18 @@ class Crazyflie(ttk.Frame):
             print("Error, state", state, "not handled")
 
     def set_battery(self, voltage):
-        self._battery_voltage['text'] = "{:.2f}V".format(voltage)
+        self._battery_voltage['text'] = "{:.3f}V".format(voltage)
 
         percent = (voltage - 3.0)*100.0/1.1
 
         self._battery_bar['value'] = percent
+
+    def set_charge_current(self, current):
+        self._charge_current['text'] = "{:.3f}A".format(current)
+
+        percent = (current - 0.0)*100.0/1.0
+
+        self._charge_current_bar['value'] = percent
     
     def set_uptime(self, ms):
         seconds = int(ms/1000) % 60
@@ -118,6 +136,7 @@ for i in range(9):
 
     cf.set_state("error")
     cf.set_battery(3.0+(i/10.0))
+    cf.set_charge_current(0+(i/10.0))
 
 context = zmq.Context()
 
@@ -135,6 +154,7 @@ def receive_thread():
             print(report)
 
             cfs[report['id']].set_battery(report['battery'])
+            cfs[report['id']].set_charge_current(report['charge_current'])
             cfs[report['id']].set_state(report['state'])
             cfs[report['id']].set_uptime(report['uptime'])
             cfs[report['id']].set_flighttime(report['flighttime'])
@@ -146,6 +166,7 @@ def receive_thread():
             if last_updated[i] < (time.time()-1):
                 cfs[i].set_state("idle")
                 cfs[i].set_battery(0)
+                cfs[i].set_charge_current(0)
                 cfs[i].set_uptime(0)
                 cfs[i].set_flighttime(0)
 

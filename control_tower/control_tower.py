@@ -72,6 +72,7 @@ class TrafficController:
         self._log_conf = None
         self.copter_state = self.STATE_UNKNOWN
         self.vbat = -1.0
+        self.chargeCurrent = -1.0
         self._time_for_next_connection_attempt = 0
         self.traj_cycles = None
         self.est_x = 0.0
@@ -149,6 +150,9 @@ class TrafficController:
     def get_charge_level(self):
         return self.vbat
 
+    def get_charge_current(self):
+        return self.chargeCurrent
+
     def is_charged_for_flight(self):
         return self.vbat > 4.10
 
@@ -211,9 +215,10 @@ class TrafficController:
         self._log_conf = LogConfig(name='Tower', period_in_ms=100)
         self._log_conf.add_variable('app.state', 'uint8_t')
         self._log_conf.add_variable('app.prgr', 'float')
-        self._log_conf.add_variable('app.uptime', 'uint32_t')
+        # self._log_conf.add_variable('app.uptime', 'uint32_t')
         self._log_conf.add_variable('app.flighttime', 'uint32_t')
         self._log_conf.add_variable('pm.vbat', 'float')
+        self._log_conf.add_variable('pm.chargeCurrent', 'float')
         self._log_conf.add_variable('stateEstimate.x', 'float')
         self._log_conf.add_variable('stateEstimate.y', 'float')
 
@@ -231,8 +236,9 @@ class TrafficController:
             self._pre_state_going_to_initial_position_end_time = 0
 
         self.vbat = data['pm.vbat']
+        self.chargeCurrent = data['pm.chargeCurrent']
 
-        self.up_time_ms = data['app.uptime']
+        # self.up_time_ms = data['app.uptime']
         self.flight_time_ms = data['app.flighttime']
 
         self.traj_cycles = data['app.prgr']
@@ -247,6 +253,7 @@ class TrafficController:
         print("  Connection state:", self.connection_state)
         print("  Copter state:", self.copter_state)
         print("  Bat:", self.vbat)
+        print("  Curr:", self.chargeCurrent)
         print("  Up time:", self.up_time_ms / 1000)
         print("  Flight time:", self.flight_time_ms / 1000)
         print("  _pre_state_taking_off:", self._pre_state_taking_off())
@@ -341,6 +348,7 @@ class TowerBase:
                     'id': i,
                     'state': state,
                     'battery': controller.get_charge_level(),
+                    'charge_current': controller.get_charge_current(),
                     'uptime': controller.up_time_ms,
                     'flighttime': controller.flight_time_ms,
                 }
