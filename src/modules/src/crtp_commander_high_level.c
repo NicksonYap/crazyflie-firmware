@@ -60,12 +60,17 @@ struct trajectoryDescription
 {
   uint8_t trajectoryLocation; // one of TrajectoryLocation_e
   uint8_t trajectoryType;     // one of TrajectoryType_e
-  union
+  uint8_t n_pieces;
+  union //NOTE: only either 'mem' or 'flash' can be used
   {
     struct {
       uint32_t offset;  // offset in uploaded memory
-      uint8_t n_pieces;
     } __attribute__((packed)) mem; // if trajectoryLocation is TRAJECTORY_LOCATION_MEM
+
+    struct {
+      const float* ptr; //pointer of array in flash
+    } __attribute__((packed)) flash; // if trajectoryLocation is TRAJECTORY_LOCATION_FLASH
+
   } trajectoryIdentifier;
 } __attribute__((packed));
 
@@ -415,14 +420,18 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
   if (isInGroup(groupMask)) {
     if (trajectoryId < NUM_TRAJECTORY_DEFINITIONS) {
       struct trajectoryDescription* trajDesc = &trajectory_descriptions[trajectoryId];
-      if (   trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM
+      if (   (trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM || trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH)
           && trajDesc->trajectoryType == TRAJECTORY_TYPE_POLY4D) {
         xSemaphoreTake(lockTraj, portMAX_DELAY);
         float t = usecTimestamp() / 1e6;
         trajectory.t_begin = t;
         trajectory.timescale = timescale;
-        trajectory.n_pieces = trajDesc->trajectoryIdentifier.mem.n_pieces;
-        trajectory.pieces = (struct poly4d*)&trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset];
+        trajectory.n_pieces = trajDesc->n_pieces;
+        if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM){
+          trajectory.pieces = (struct poly4d*)&trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset];
+        }else if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
+          trajectory.pieces = (struct poly4d*)trajDesc->trajectoryIdentifier.flash.ptr;
+        }
         if (relative) {
           trajectory.shift = vzero();
           struct traj_eval traj_init;
@@ -439,7 +448,7 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
         }
         result = plan_start_trajectory(&planner, &trajectory, reversed);
         xSemaphoreGive(lockTraj);
-      } else if (trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM
+      } else if ((trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM || trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH)
           && trajDesc->trajectoryType == TRAJECTORY_TYPE_POLY4D_COMPRESSED) {
 
         if (timescale != 1 || reversed) {
@@ -447,10 +456,17 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
         } else {
           xSemaphoreTake(lockTraj, portMAX_DELAY);
           float t = usecTimestamp() / 1e6;
-          piecewise_compressed_load(
-            &compressed_trajectory,
-            &trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset]
-          );
+          if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM){
+		    piecewise_compressed_load(
+			  &compressed_trajectory,
+			  &trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset]
+		    );
+          }else if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
+		    piecewise_compressed_load(
+			  &compressed_trajectory,
+			  trajDesc->trajectoryIdentifier.flash.ptr
+		    );
+          }
           compressed_trajectory.t_begin = t;
           if (relative) {
             struct traj_eval traj_init = piecewise_compressed_eval(
@@ -481,15 +497,20 @@ int define_trajectory(const struct data_define_trajectory* data)
 }
 
 int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset, float* data, uint32_t size, uint8_t trajectoryLocation) {
-  memcpy(trajectories_memory, data,  size);
 
   struct data_define_trajectory def = {
     .trajectoryId = trajectoryId,
-    .description.trajectoryLocation = TRAJECTORY_LOCATION_MEM,
+    .description.trajectoryLocation = trajectoryLocation,
     .description.trajectoryType = TRAJECTORY_TYPE_POLY4D,
-    .description.trajectoryIdentifier.mem.offset = offset,
-    .description.trajectoryIdentifier.mem.n_pieces = size / (sizeof(float) * 33)
+    .description.n_pieces = size / (sizeof(float) * 33)
   };
+
+  if(trajectoryLocation == TRAJECTORY_LOCATION_MEM){
+    def.description.trajectoryIdentifier.mem.offset = offset;
+    memcpy(trajectories_memory, data, size); //TODO: will replace existing trajectories
+  }else if(trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
+    def.description.trajectoryIdentifier.flash.ptr = (const float*) data;
+  }
 
   return define_trajectory(&def);
 }
