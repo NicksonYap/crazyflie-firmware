@@ -43,6 +43,7 @@
 #include "param.h"
 #include "pm.h"
 #include "log.h"
+#include "statsCnt.h"
 
 static bool isInit = false;
 
@@ -754,6 +755,34 @@ static void locSrvStatus(uint8_t buffer[][3], bool reset)
   }
 }
 
+/**
+ * An effect that shows the Lighthouse Reception Rate on the LED ring.
+ *
+ * Red means bad, green means good.
+ */
+static float badRate = 0, goodRate = 30; //will max at 30Hz for 1 BS, and 60Hz for 2 BS, but we only want to know if position was even received
+static void lighthouseRateEffect(uint8_t buffer[][3], bool reset)
+{
+  int i;
+  static int cycleRtId;
+  float cycleRt;
+
+  cycleRtId = logGetVarId("lighthouse", "cycleRt"); //rate of successful retrieval of position data
+  statsCntRateLogger_t* logger = (statsCntRateLogger_t *)logGetAddress(cycleRtId);
+
+  unsigned int timestamp = ((long long)xTaskGetTickCount())/portTICK_RATE_MS;
+  logByFunction_t logByFunction = logger->logByFunction;
+  cycleRt = logByFunction.aquireFloat(timestamp, logByFunction.data);
+
+  uint8_t cycleRt_scaled = LIMIT(LINSCALE(badRate, goodRate, 0, 255, cycleRt));
+
+  for (i = 0; i < NBR_LEDS; i++) {
+    buffer[i][0] = 255 - cycleRt_scaled; // Red (bad)
+    buffer[i][1] = cycleRt_scaled; // Green (good)
+    buffer[i][2] = 0; // Blue
+  }
+}
+
 /**************** Effect list ***************/
 
 
@@ -776,6 +805,7 @@ Ledring12Effect effectsFct[] =
   fadeColorEffect,
   rssiEffect,
   locSrvStatus,
+  lighthouseRateEffect,
 };
 
 /********** Ring init and switching **********/
