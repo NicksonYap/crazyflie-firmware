@@ -64,7 +64,7 @@ struct trajectoryDescription
 {
   uint8_t trajectoryLocation; // one of TrajectoryLocation_e
   uint8_t trajectoryType;     // one of TrajectoryType_e
-  uint8_t n_pieces;
+  uint16_t n_pieces;
   union //NOTE: only either 'mem' or 'flash' can be used
   {
     struct {
@@ -518,7 +518,7 @@ int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset
     .trajectoryId = trajectoryId,
     .description.trajectoryLocation = trajectoryLocation,
     .description.trajectoryType = TRAJECTORY_TYPE_POLY4D,
-    .description.n_pieces = size / (sizeof(float) * 33)
+    .description.n_pieces = size / (sizeof(float) * 33) // 8 * 4 + 1 = 33 floats in each piece, max 65535 pieces
   };
 
   if(trajectoryLocation == TRAJECTORY_LOCATION_MEM){

@@ -39,6 +39,7 @@ Header file for piecewise polynomial trajectories
 #pragma once
 
 #include "math3d.h"
+#include "FreeRTOS.h"
 
 #define PP_DEGREE (7)
 #define PP_SIZE (PP_DEGREE + 1)
@@ -144,14 +145,14 @@ struct piecewise_traj
 	float t_begin;
 	float timescale;
 	struct vec shift;
-	unsigned char n_pieces;
+	uint16_t n_pieces;
 	struct poly4d* pieces;
 };
 
 static inline float piecewise_duration(struct piecewise_traj const *pp)
 {
 	float total_dur = 0;
-	for (int i = 0; i < pp->n_pieces; ++i) {
+	for (uint16_t i = 0; i < pp->n_pieces; ++i) {
 		total_dur += pp->pieces[i].duration;
 	}
 	return total_dur * pp->timescale;

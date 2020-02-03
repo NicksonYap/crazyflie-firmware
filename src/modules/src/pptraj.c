@@ -325,7 +325,7 @@ struct traj_eval poly4d_eval(struct poly4d const *p, float t)
 struct traj_eval piecewise_eval(
   struct piecewise_traj const *traj, float t)
 {
-	int cursor = 0;
+	uint16_t cursor = 0;
 	t = t - traj->t_begin;
 	while (cursor < traj->n_pieces) {
 		struct poly4d const *piece = &(traj->pieces[cursor]);
@@ -351,7 +351,7 @@ struct traj_eval piecewise_eval(
 struct traj_eval piecewise_eval_reversed(
   struct piecewise_traj const *traj, float t)
 {
-	int cursor = traj->n_pieces - 1;
+	uint16_t cursor = traj->n_pieces - 1;
 	t = t - traj->t_begin;
 	while (cursor >= 0) {
 		struct poly4d const *piece = &(traj->pieces[cursor]);
