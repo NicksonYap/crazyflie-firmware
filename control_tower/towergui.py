@@ -68,16 +68,20 @@ class Crazyflie(ttk.Frame):
             self._status.config(text="Offline", fg="grey")
         elif state == "crashed":
             self._status.config(text="Crashed", fg="purple")
-        elif state == "charging":
-            self._status.config(text="Charging", fg="red")
-        elif state == "ready":
-            self._status.config(text="Ready", fg="orange")
         elif state == "flying":
             self._status.config(text="Flying", fg="green")
         elif state == "hovering":
             self._status.config(text="Take off", fg="green")
         elif state == "landing":
             self._status.config(text="Landing", fg="green")
+        elif state == "ready":
+            self._status.config(text="Ready", fg="orange")
+        elif state == "charged":
+            self._status.config(text="Charged", fg="red")
+        elif state == "charging":
+            self._status.config(text="Charging", fg="red")
+        elif state == "landed":
+            self._status.config(text="Landed", fg="red")
         else:
             self._status.config(text="ERROR", fg="purple")
             print("Error, state", state, "not handled")

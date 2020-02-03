@@ -34,6 +34,9 @@ import math
 
 import zmq
 
+MIN_IS_CHARGING_CURRENT = 0.035
+MAX_IS_CHARGING_VOLTAGE = 4.195
+
 class TrafficController:
     CS_DISCONNECTED = 0
     CS_CONNECTING = 1
@@ -117,14 +120,23 @@ class TrafficController:
                self.copter_state == self.STATE_CHECK_CHARGING or \
                self.copter_state == self.STATE_REPOSITION_ON_PAD
 
-    def is_charging(self):
+    def is_landed(self):
         return self.copter_state == self.STATE_WAIT_FOR_TAKE_OFF and not self._pre_state_taking_off()
+
+    def is_charging(self):
+        return self.chargeCurrent >= MIN_IS_CHARGING_CURRENT
+
+    def is_charged(self):
+        return self.vbat >= MAX_IS_CHARGING_VOLTAGE
+    
+    def is_landed_and_charging_or_charged(self):
+        return self.is_landed() and (self.is_charging() or self.is_charged())
 
     def is_crashed(self):
         return self.copter_state == self.STATE_CRASHED
 
     def take_off(self):
-        if self.is_charging():
+        if self.is_landed_and_charging_or_charged():
             if self._cf:
                 self._pre_state_taking_off_end_time = time.time() + self.PRE_STATE_TIMEOUT
                 self._cf.param.set_value('app.takeoff', 1)
@@ -154,7 +166,8 @@ class TrafficController:
         return self.chargeCurrent
 
     def is_charged_for_flight(self):
-        return self.vbat > 4.10
+        # return self.vbat > 4.10
+        return self.vbat > 3.82
 
     def get_traj_cycles(self):
         return self.traj_cycles
@@ -201,7 +214,7 @@ class TrafficController:
 
         self._cf = Crazyflie(rw_cache='./cache')
 
-        # self._cf.console.receivedChar.add_callback(lambda text: print(text, end="")) #uncomment to print console messages
+        self._cf.console.receivedChar.add_callback(lambda text: print(text, end="")) #uncomment to print console messages
         self._cf.connected.add_callback(self._connected)
         self._cf.disconnected.add_callback(self._disconnected)
         self._cf.connection_failed.add_callback(self._connection_failed)
@@ -290,7 +303,7 @@ class TowerBase:
 
         charging_controllers = []
         for controller in self.controllers:
-            if controller.is_charging():
+            if controller.is_landed_and_charging_or_charged():
                 charge = controller.get_charge_level()
                 if controller.is_charged_for_flight():
                     charging_controllers.append((controller, charge))
@@ -340,8 +353,12 @@ class TowerBase:
                 state = "landing"
             elif controller.is_charged_for_flight():
                 state = "ready"
+            elif controller.is_charged():
+                state = "charged"
             elif controller.is_charging():
                 state = "charging"
+            elif controller.is_landed():
+                state = "landed"
 
             try:
                 report = {
