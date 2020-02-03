@@ -56,6 +56,10 @@ such as: take-off, landing, polynomial trajectories.
 #include "param.h"
 #include "static_mem.h"
 
+#ifndef ENABLE_TRAJECTORY_LOCATION_MEM
+  #define ENABLE_TRAJECTORY_LOCATION_MEM 1
+#endif
+
 struct trajectoryDescription
 {
   uint8_t trajectoryLocation; // one of TrajectoryLocation_e
@@ -75,7 +79,11 @@ struct trajectoryDescription
 } __attribute__((packed));
 
 // Global variables
+
+#ifdef ENABLE_TRAJECTORY_LOCATION_MEM
 uint8_t trajectories_memory[TRAJECTORY_MEMORY_SIZE];
+#endif
+
 static struct trajectoryDescription trajectory_descriptions[NUM_TRAJECTORY_DEFINITIONS];
 
 static bool isInit = false;
@@ -428,7 +436,11 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
         trajectory.timescale = timescale;
         trajectory.n_pieces = trajDesc->n_pieces;
         if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM){
-          trajectory.pieces = (struct poly4d*)&trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset];
+		  #ifdef ENABLE_TRAJECTORY_LOCATION_MEM
+		  trajectory.pieces = (struct poly4d*)&trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset];
+		  #else
+	      ASSERT(false); //trajectories_memory not defined
+		  #endif
         }else if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
           trajectory.pieces = (struct poly4d*)trajDesc->trajectoryIdentifier.flash.ptr;
         }
@@ -457,10 +469,14 @@ int crtpCommanderHighLevelStartTrajectory(uint8_t trajectoryId, float timescale,
           xSemaphoreTake(lockTraj, portMAX_DELAY);
           float t = usecTimestamp() / 1e6;
           if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_MEM){
-		    piecewise_compressed_load(
-			  &compressed_trajectory,
-			  &trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset]
-		    );
+			#ifdef ENABLE_TRAJECTORY_LOCATION_MEM
+  		    piecewise_compressed_load(
+  			  &compressed_trajectory,
+  			  &trajectories_memory[trajDesc->trajectoryIdentifier.mem.offset]
+  		    );
+			#else
+			ASSERT(false); //trajectories_memory not defined
+			#endif
           }else if(trajDesc->trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
 		    piecewise_compressed_load(
 			  &compressed_trajectory,
@@ -506,8 +522,12 @@ int crtpCommanderHighLevelDefineTrajectory(uint8_t trajectoryId, uint32_t offset
   };
 
   if(trajectoryLocation == TRAJECTORY_LOCATION_MEM){
-    def.description.trajectoryIdentifier.mem.offset = offset;
-    memcpy(trajectories_memory, data, size); //TODO: will replace existing trajectories
+	#ifdef ENABLE_TRAJECTORY_LOCATION_MEM
+	def.description.trajectoryIdentifier.mem.offset = offset;
+	memcpy(trajectories_memory, data, size); //TODO: will replace existing trajectories
+	#else
+    ASSERT(false); //trajectories_memory not defined
+	#endif
   }else if(trajectoryLocation == TRAJECTORY_LOCATION_FLASH){
     def.description.trajectoryIdentifier.flash.ptr = (const float*) data;
   }

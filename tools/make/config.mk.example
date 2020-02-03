@@ -84,3 +84,5 @@
 ## SDCard test configuration ------------------------------------
 # FATFS_DISKIO_TESTS  = 1	# Set to 1 to enable FatFS diskio function tests. Erases card.
 
+## Trajectories configuration
+# ENABLE_TRAJECTORY_LOCATION_MEM = 0 # Set to 0 to disable trajectories in memory
