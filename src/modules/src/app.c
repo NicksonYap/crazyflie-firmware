@@ -166,7 +166,9 @@ void appMain() {
 
   commanderEnableHighLevel(true);
 //  crtpCommanderHighLevelDefineTrajectory(1, 0, (float *)sequence, sizeof(sequence)); //from flash to mem
-  crtpCommanderHighLevelDefineTrajectory(1, 0, (float *)sequence, sizeof(sequence), TRAJECTORY_LOCATION_MEM); //from flash to mem
+//  crtpCommanderHighLevelDefineTrajectory(1, 0, sequence, sizeof(sequence), TRAJECTORY_LOCATION_MEM); //from mem to mem
+//  crtpCommanderHighLevelDefineTrajectory(1, 0, (float *)sequence, sizeof(sequence), TRAJECTORY_LOCATION_MEM); //from flash to mem
+  crtpCommanderHighLevelDefineTrajectory(1, 0, (float *)sequence, sizeof(sequence), TRAJECTORY_LOCATION_FLASH); //using flash only
 
   resetLockData();
 
