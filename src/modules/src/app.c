@@ -44,6 +44,8 @@ static bool takeOffWhenReady = false;
 static float goToInitialPositionWhenReady = -1.0f;
 static bool terminateTrajectoryAndLand = false;
 
+static bool mustChargeOnLand = true;
+
 static float padX = 0.0;
 static float padY = 0.0;
 static float padZ = 0.0;
@@ -309,7 +311,7 @@ static void appTimer(xTimerHandle timer) {
     case STATE_CHECK_CHARGING:
       if (now > landingTimeCheckCharge) {
         DEBUG_PRINT("isCharging: %d\n", isCharging());
-        if (isCharging()) {
+        if (isCharging() || !mustChargeOnLand) {
           ledseqRun(LED_LOCK, seq_lps_lock);
           state = STATE_WAIT_FOR_TAKE_OFF;
         } else {
@@ -402,6 +404,7 @@ PARAM_GROUP_START(app)
   PARAM_ADD(PARAM_FLOAT, offsy, &trajecory_center_offset_y)
   PARAM_ADD(PARAM_FLOAT, offsz, &trajecory_center_offset_z)
   PARAM_ADD(PARAM_UINT8, trajcount, &trajectoryCount)
+  PARAM_ADD(PARAM_UINT8, chargeLand, &mustChargeOnLand)
 PARAM_GROUP_STOP(app)
 
 LOG_GROUP_START(app)
