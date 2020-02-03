@@ -35,6 +35,9 @@ static void appTimer(xTimerHandle timer);
 #define SEQUENCE_SPEED 1.0
 #define DURATION_TO_INITIAL_POSITION 2.0
 
+#define MIN_IS_CHARGING_CURRENT 0.035f //35mA minimum to consider the drone as charging. This needs to be the current slightly lower than when charging at MAX_IS_CHARGING_VOLTAGE, otherwise it thinks it's not charging
+#define MAX_IS_CHARGING_VOLTAGE 4.195f //4.19V maximum otherwise don't need to charge
+
 static uint32_t lockWriteIndex;
 static float lockData[LOCK_LENGTH][3];
 static void resetLockData();
@@ -310,15 +313,17 @@ static void appTimer(xTimerHandle timer) {
       break;
     case STATE_CHECK_CHARGING:
       if (now > landingTimeCheckCharge) {
-        DEBUG_PRINT("isCharging: %d\n", isCharging());
-        if (isCharging() || !mustChargeOnLand) {
-          ledseqRun(LED_LOCK, seq_lps_lock);
-          state = STATE_WAIT_FOR_TAKE_OFF;
-        } else {
-          DEBUG_PRINT("Not charging. Try to reposition on pad.\n");
-          crtpCommanderHighLevelTakeOff((double)padZ + LANDING_HEIGHT, 1.0, 0);
-          state = STATE_REPOSITION_ON_PAD;
-        }
+		bool isReallyCharging = isCharging() && (pmGetChargeCurrent()*1000 >= MIN_IS_CHARGING_CURRENT*1000);
+		bool isCharged = pmGetBatteryVoltage()*1000 >= MAX_IS_CHARGING_VOLTAGE*1000;
+        DEBUG_PRINT("isReallyCharging: %d\n", isReallyCharging);
+		if (isCharged || isReallyCharging || !mustChargeOnLand) {
+		  ledseqRun(LED_LOCK, seq_lps_lock);
+		  state = STATE_WAIT_FOR_TAKE_OFF;
+		} else {
+	      DEBUG_PRINT("Not charging. Try to reposition on pad.\n");
+		  crtpCommanderHighLevelTakeOff((double)padZ + LANDING_HEIGHT, 1.0, 0);
+		  state = STATE_REPOSITION_ON_PAD;
+		}
       }
       break;
     case STATE_REPOSITION_ON_PAD:
